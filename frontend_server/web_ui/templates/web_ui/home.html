@@ -1,0 +1,14 @@
+{% extends "web_ui/base.html" %}
+
+{% block content %}
+
+<h1>Welcome</h1>
+
+{% if is_logged_in %}
+<p>You are logged in.</p>
+<a href="/dashboard/">Go to Dashboard</a>
+{% else %}
+<p>Please login or signup.</p>
+{% endif %}
+
+{% endblock %}

@@ -1,24 +1,17 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard</title>
-</head>
-<body>
-    <h1>User Dashboard</h1>
-    
-    <div style="background-color: #f0f0f0; padding: 20px; border-radius: 5px;">
-        <h3>Welcome, {{ user_email }}</h3>
-        
-        {% if error %}
-            <p style="color: red;">{{ error }}</p>
-        {% else %}
-            <p><strong>Message from Go:</strong> {{ data.message }}</p>
-            <p><strong>Secret Data:</strong> {{ data.secret_data }}</p>
-            <p><strong>Status:</strong> <span style="color: green;">{{ data.user_status }}</span></p>
-        {% endif %}
-    </div>
+{% extends "web_ui/base.html" %}
 
-    <br>
-    <a href="/logout"><button>Logout</button></a>
-</body>
-</html>
+{% block content %}
+
+<h2>Dashboard</h2>
+
+<p>Email: {{ user_email }}</p>
+
+{% if data %}
+<p>{{ data.message }}</p>
+{% endif %}
+
+{% if error %}
+<p style="color:red">{{ error }}</p>
+{% endif %}
+
+{% endblock %}

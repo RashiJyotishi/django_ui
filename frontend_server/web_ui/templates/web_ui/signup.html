@@ -1,37 +1,23 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Sign Up</title>
-</head>
-<body>
-    <h2>Sign Up</h2>
-    {% if error %}
-        <div style="color: red; border: 1px solid red; padding: 10px; margin-bottom: 10px;">
-            <strong>Error:</strong> {{ error }}
-        </div>
-    {% endif %}
+{% extends "web_ui/base.html" %}
 
-    {% if success %}
-        <div style="color: green; border: 1px solid green; padding: 10px; margin-bottom: 10px;">
-            {{ success }}
-        </div>
-    {% endif %}
+{% block content %}
 
-    <form method="POST" action="">
-        {% csrf_token %}
-        <label>Username:</label>
-        <input type="text" name="username" required><br><br>
-        
-        <label>Email:</label>
-        <input type="email" name="email" required><br><br>
+<h2>Signup</h2>
 
-        <label>Password:</label>
-        <input type="password" name="password" required><br><br>
+{% if error %}
+<div style="color:red">{{ error }}</div>
+{% endif %}
 
-        <label>Confirm Password:</label>
-        <input type="password" name="ConfirmPassword" required><br><br>
-        
-        <button type="submit">Sign Up</button>
-    </form>
-</body>
-</html>
+<form method="POST">
+{% csrf_token %}
+
+<input name="username" placeholder="Username"><br><br>
+<input name="email" placeholder="Email"><br><br>
+<input type="password" name="password" placeholder="Password"><br><br>
+<input type="password" name="ConfirmPassword" placeholder="Confirm Password"><br><br>
+
+<button>Signup</button>
+
+</form>
+
+{% endblock %}
