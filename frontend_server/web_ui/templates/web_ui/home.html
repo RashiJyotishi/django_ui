@@ -2,13 +2,26 @@
 
 {% block content %}
 
-<h1>Welcome</h1>
+<h2>Your Groups</h2>
 
 {% if is_logged_in %}
-<p>You are logged in.</p>
-<a href="/dashboard/">Go to Dashboard</a>
+
+    {% for g in groups %}
+    <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px">
+        <strong>{{ g.name }}</strong><br>
+        Join Code: <b>{{ g.join_code }}</b>
+        <a href="/add-expense/{{ g.id }}/">Add Expense</a>
+    </div>
+    {% empty %}
+        <p>No groups yet</p>
+    {% endfor %}
+
+    <br>
+    <a href="/create-group/">Create New Group</a>
+    <a href="/join-group/">Join Existing Group</a>
+
 {% else %}
-<p>Please login or signup.</p>
+    <p>Please login to see your groups.</p>
 {% endif %}
 
 {% endblock %}
