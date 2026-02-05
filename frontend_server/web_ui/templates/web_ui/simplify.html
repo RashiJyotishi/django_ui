@@ -1,0 +1,9 @@
+<h2>Simplified Debts</h2>
+
+{% for t in txns %}
+<p>
+User {{ t.from }} pays User {{ t.to }} : {{ t.amount }}
+</p>
+{% empty %}
+<p>No debts</p>
+{% endfor %}
