@@ -1,0 +1,14 @@
+Amount:
+<input name="amount"><br>
+
+Description:
+<input name="description"><br>
+
+<h3>Custom Split (optional)</h3>
+
+{% for member in members %}
+{{ member.username }}:
+<input name="split_{{ member.id }}" value="0"><br>
+{% endfor %}
+
+<button type="submit">Add</button>
