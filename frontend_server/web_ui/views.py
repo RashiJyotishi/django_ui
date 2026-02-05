@@ -16,10 +16,10 @@ def signup_page(request):
         # 2. Prepare JSON for Go Backend
         # These keys must match the struct fields in your Go models
         payload = {
-            "Username": username,
-            "Email": email,
-            "Password": password,
-            "ConfirmPassword": ConfirmPassword
+            "username": username,
+            "email": email,
+            "password": password,
+            "confirm_password": ConfirmPassword
         }
 
         try:
@@ -135,6 +135,113 @@ def logout_user(request):
 def home(request):
     token = request.session.get("auth_token")
 
+    groups = []
+
+    if token:
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+
+        try:
+            res = requests.get(f"{GO_BACKEND_URL}/api/groups", headers=headers)
+            if res.status_code == 200:
+                groups = res.json()
+        except:
+            pass
+
     return render(request, "web_ui/home.html", {
-        "is_logged_in": bool(token)
+        "is_logged_in": bool(token),
+        "groups": groups
+    })
+
+def create_group(request):
+    token = request.session.get("auth_token")
+
+    if not token:
+        return redirect("login")
+
+    if request.method == "POST":
+        name = request.POST.get("name")
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = requests.post(
+            f"{GO_BACKEND_URL}/api/create-group",
+            json={"name": name},
+            headers=headers
+        )
+        print("STATUS:", res.status_code)
+        print("RAW RESPONSE:", res.text)
+
+        if res.status_code != 200:
+            return render(request, "web_ui/create_group.html", {
+                "error": "Backend error"
+            })
+
+        data = res.json()
+        # data = res.json()
+
+        return render(request,"web_ui/group_created.html",{
+            "code": data["join_code"]
+        })
+
+    return render(request,"web_ui/create_group.html")
+
+def join_group(request):
+    token = request.session.get("auth_token")
+
+    if request.method=="POST":
+        code = request.POST.get("code")
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        requests.post(
+            f"{GO_BACKEND_URL}/api/join-group",
+            json={"code":code},
+            headers=headers
+        )
+
+        return redirect("home")
+
+    return render(request,"web_ui/join_group.html")
+
+
+def add_expense(request, group_id):
+    token = request.session.get("auth_token")
+    if not token:
+        return redirect("login")
+
+    if request.method == "POST":
+        amount = request.POST.get("amount")
+        description = request.POST.get("description")
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = requests.post(
+            f"{GO_BACKEND_URL}/api/expenses",
+            json={
+                "group_id": group_id,
+                "amount": float(amount),
+                "description": description
+            },
+            headers=headers
+        )
+
+        return redirect("home")
+
+    return render(request, "web_ui/add_expense.html", {"group_id": group_id})
+
+def simplify_group(request, group_id):
+    token = request.session.get("auth_token")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = requests.get(
+        f"{GO_BACKEND_URL}/api/groups/{group_id}/simplify",
+        headers=headers
+    )
+
+    txns = res.json()
+
+    return render(request,"web_ui/simplify.html",{
+        "txns": txns
     })
