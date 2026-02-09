@@ -1,0 +1,64 @@
+{% extends "web_ui/base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-6 flex justify-between items-center">
+        <a href="{% url 'home' %}" class="text-sm text-gray-500 hover:text-indigo-600 transition flex items-center dark:text-gray-400 dark:hover:text-indigo-400">
+            <i class="fa-solid fa-arrow-left mr-2"></i> Back to Groups
+        </a>
+        <a href="{% url 'add_expense' group_id %}" class="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition dark:hover:bg-indigo-500">
+            <i class="fa-solid fa-plus mr-1"></i> Add Expense
+        </a>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+        <div class="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center dark:bg-gray-700/50 dark:border-gray-600">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Expense History</h2>
+                <p class="text-gray-500 text-sm mt-1 dark:text-gray-400">Timeline of spending.</p>
+            </div>
+            <div class="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+            </div>
+        </div>
+
+        <div class="divide-y divide-gray-100 dark:divide-gray-700">
+            {% if expenses %}
+                {% for expense in expenses %}
+                <div class="p-5 hover:bg-gray-50 transition flex items-center justify-between group dark:hover:bg-gray-700/50">
+                    <div class="flex items-center gap-4">
+                        <div class="h-12 w-12 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0 dark:bg-gray-700 dark:text-gray-400">
+                            {% if 'Settlement' in expense.description %}
+                                <i class="fa-solid fa-handshake text-green-500"></i>
+                            {% else %}
+                                <i class="fa-solid fa-receipt"></i>
+                            {% endif %}
+                        </div>
+                        
+                        <div>
+                            <p class="text-gray-900 font-bold text-lg dark:text-white">{{ expense.description }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Paid by <span class="font-semibold text-gray-700 dark:text-gray-300">{{ expense.username }}</span>
+                                <span class="mx-1">•</span> {{ expense.created_at|slice:":10" }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="text-right">
+                        <span class="block text-gray-900 font-bold text-xl dark:text-white">₹{{ expense.amount }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-20 px-6">
+                    <div class="h-20 w-20 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 mx-auto mb-4 dark:bg-gray-700/50 dark:text-gray-600">
+                        <i class="fa-solid fa-receipt text-3xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">No expenses yet</h3>
+                    <p class="text-gray-500 mt-2 dark:text-gray-400">Add an expense to start tracking.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -2,16 +2,45 @@
 
 {% block content %}
 
-<h2>Dashboard</h2>
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+        <div class="px-6 py-5 bg-gray-50/80 border-b border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
+            <h3 class="text-lg leading-6 font-bold text-gray-900 dark:text-white">User Dashboard</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your personal details.</p>
+        </div>
+        
+        <div class="p-6 sm:p-8">
+            <div class="flex items-center mb-8">
+                <div class="h-20 w-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-3xl font-bold shadow-inner dark:bg-indigo-900/50 dark:text-indigo-400">
+                    {{ user_email|slice:":1"|upper }}
+                </div>
+                <div class="ml-6">
+                    <p class="text-sm font-medium text-gray-500 uppercase tracking-wide dark:text-gray-400">Email Address</p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ user_email }}</p>
+                </div>
+            </div>
 
-<p>Email: {{ user_email }}</p>
+            {% if data %}
+            <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex items-start dark:bg-green-900/30 dark:border-green-800">
+                <i class="fa-solid fa-circle-check text-green-500 mt-1 mr-3 dark:text-green-400"></i>
+                <p class="text-green-800 font-medium dark:text-green-300">{{ data.message }}</p>
+            </div>
+            {% endif %}
 
-{% if data %}
-<p>{{ data.message }}</p>
-{% endif %}
-
-{% if error %}
-<p style="color:red">{{ error }}</p>
-{% endif %}
+            {% if error %}
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-start dark:bg-red-900/30 dark:border-red-800">
+                <i class="fa-solid fa-triangle-exclamation text-red-500 mt-1 mr-3 dark:text-red-400"></i>
+                <p class="text-red-800 font-medium dark:text-red-300">{{ error }}</p>
+            </div>
+            {% endif %}
+            
+            <div class="pt-6 border-t border-gray-100 dark:border-gray-700">
+                <a href="/" class="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-semibold transition dark:text-indigo-400 dark:hover:text-indigo-300">
+                    <i class="fa-solid fa-arrow-left mr-2"></i> Return to Home
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

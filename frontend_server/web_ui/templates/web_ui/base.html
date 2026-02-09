@@ -1,27 +1,168 @@
+{% load static %}
 <!DOCTYPE html>
-<html>
+
+{% comment %} comment for checking {% endcomment %}
+<html lang="en">
 <head>
-    <title>My App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HisabKitab</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
+<body class="bg-gray-50 text-gray-800 flex flex-col min-h-screen dark:bg-gray-900 dark:text-gray-100 transition-colors duration-300">
 
-<body>
+    <nav class="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 dark:bg-gray-900/90 dark:border-gray-700 transition-colors duration-300">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex-shrink-0 flex items-center gap-2 group">
+                        <div class="bg-indigo-600 text-white p-1.5 rounded-lg group-hover:bg-indigo-700 transition">
+                            <i class="fa-solid fa-wallet text-sm"></i>
+                        </div>
+                        <span class="font-bold text-xl text-gray-900 tracking-tight dark:text-white">Hisab<span class="text-indigo-600 dark:text-indigo-400">Kitab</span></span>
+                    </a>
+                </div>
 
-<nav style="background:#eee;padding:10px">
-    <a href="/">Home</a>
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-indigo-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium transition dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Home</a>
+                    
+                    {% if request.session.auth_token %}
+                        <a href="/dashboard/" class="text-gray-600 hover:text-indigo-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium transition dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Dashboard</a>
+                        <div class="h-4 w-px bg-gray-300 mx-2 dark:bg-gray-700"></div>
+                        <a href="/logout/" class="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-medium transition dark:hover:bg-gray-800">
+                            Logout
+                        </a>
+                    {% else %}
+                        <a href="/login/" class="text-gray-600 hover:text-indigo-600 hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium transition dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Login</a>
+                        <a href="/signup/" class="bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-2 rounded-full text-sm font-medium shadow-sm hover:shadow-md transition transform hover:-translate-y-0.5 dark:bg-indigo-600 dark:hover:bg-indigo-500">
+                            Sign Up
+                        </a>
+                    {% endif %}
 
-    {% if request.session.auth_token %}
-        | <a href="/dashboard/">Dashboard</a>
-        | <a href="/logout/">Logout</a>
-    {% else %}
-        | <a href="/login/">Login</a>
-        | <a href="/signup/">Signup</a>
-    {% endif %}
-</nav>
+                    <button id="theme-toggle" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-700 transition ml-2">
+                        <i id="theme-toggle-dark-icon" class="fa-solid fa-moon hidden"></i>
+                        <i id="theme-toggle-light-icon" class="fa-solid fa-sun hidden"></i>
+                    </button>
+                </div>
 
-<hr>
+                <div class="flex items-center md:hidden">
+                    <button id="mobile-menu-btn" class="text-gray-500 hover:text-gray-900 focus:outline-none p-2 rounded-md hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
 
-{% block content %}
-{% endblock %}
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-100 bg-white dark:bg-gray-900 dark:border-gray-700">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="/" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-indigo-600 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Home</a>
+                <button id="mobile-theme-toggle" class="w-full text-left flex items-center px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-indigo-600 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-indigo-400">
+                   <span class="mr-2">Toggle Theme</span> <i class="fa-solid fa-circle-half-stroke"></i>
+                </button>
 
+                {% if request.session.auth_token %}
+                    <a href="/dashboard/" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-indigo-600 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Dashboard</a>
+                    <a href="/logout/" class="block px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-gray-800">Logout</a>
+                {% else %}
+                    <a href="/login/" class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-indigo-600 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-indigo-400">Login</a>
+                    <a href="/signup/" class="block px-3 py-2 rounded-md text-base font-medium text-indigo-600 font-bold hover:bg-gray-50 dark:text-indigo-400 dark:hover:bg-gray-800">Sign Up</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="bg-white border-t border-gray-200 mt-auto dark:bg-gray-900 dark:border-gray-700 transition-colors duration-300">
+        <div class="max-w-6xl mx-auto py-8 px-4 flex flex-col items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+            
+            <p class="mb-3">&copy; 2026 HisabKitab Project.</p>
+
+            <div class="flex space-x-6">
+                <a href="#" class="hover:text-gray-900 dark:hover:text-gray-200 transition">Privacy</a>
+                <a href="#" class="hover:text-gray-900 dark:hover:text-gray-200 transition">Terms</a>
+            </div>
+            
+        </div>
+    </footer>
+
+    <script>
+        // 1. Mobile Menu Logic
+        const btn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+        if(btn && menu){
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+        }
+        
+        // 2. Alert Dismiss Logic
+        const alerts = document.querySelectorAll('[role="alert"]');
+        if(alerts.length > 0) {
+            setTimeout(() => {
+                alerts.forEach(el => {
+                    el.style.transition = "opacity 0.5s ease";
+                    el.style.opacity = '0';
+                    setTimeout(() => el.remove(), 500);
+                });
+            }, 5000);
+        }
+
+        // 3. Dark Mode Logic
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const mobileThemeBtn = document.getElementById('mobile-theme-toggle');
+        const darkIcon = document.getElementById('theme-toggle-dark-icon');
+        const lightIcon = document.getElementById('theme-toggle-light-icon');
+        const html = document.documentElement;
+
+        // Function to set theme
+        function setTheme(isDark) {
+            if (isDark) {
+                html.classList.add('dark');
+                localStorage.theme = 'dark';
+                if(darkIcon) darkIcon.classList.add('hidden');
+                if(lightIcon) lightIcon.classList.remove('hidden');
+            } else {
+                html.classList.remove('dark');
+                localStorage.theme = 'light';
+                if(lightIcon) lightIcon.classList.add('hidden');
+                if(darkIcon) darkIcon.classList.remove('hidden');
+            }
+        }
+
+        // Initialize based on saved preference or system default
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            setTheme(true);
+        } else {
+            setTheme(false);
+        }
+
+        // Event Listeners
+        if(themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                setTheme(!html.classList.contains('dark'));
+            });
+        }
+        if(mobileThemeBtn) {
+            mobileThemeBtn.addEventListener('click', () => {
+                setTheme(!html.classList.contains('dark'));
+            });
+        }
+    </script>
 </body>
 </html>
