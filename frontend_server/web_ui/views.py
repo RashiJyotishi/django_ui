@@ -3,20 +3,16 @@ import re
 import json
 import base64
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages # For displaying error messages
-# CHANGE THIS to match your Go Backend port (e.g., :3000 or :8080)
+from django.contrib import messages 
 GO_BACKEND_URL = 'http://localhost:8080'
 
 def signup_page(request):
     if request.method == 'POST':
-        # 1. Extract data from the Django Form
         username = request.POST.get('username')
         email = request.POST.get('email')
         password = request.POST.get('password')
         ConfirmPassword = request.POST.get('ConfirmPassword')
 
-        # 2. Prepare JSON for Go Backend
-        # These keys must match the struct fields in your Go models
         payload = {
             "username": username,
             "email": email,
@@ -25,7 +21,7 @@ def signup_page(request):
         }
 
         try:
-            # 3. Send Request to Go
+
             response = requests.post(f"{GO_BACKEND_URL}/api/signup", json=payload)
 
             # 4. Handle Response
@@ -250,13 +246,14 @@ def add_expense(request, group_id):
     return render(request, "web_ui/add_expense.html", {"group_id": group_id})
 
 def get_current_user_id(request):
+    """Extract user ID from JWT token"""
     token = request.session.get("auth_token")
     if not token:
         return None
     try:
-        
         parts = token.split('.')
-        if len(parts) < 2: return None
+        if len(parts) < 2: 
+            return None
         
         payload = parts[1]
         # Fix Base64 padding if necessary
@@ -267,6 +264,28 @@ def get_current_user_id(request):
         
         # 'user_id' matches the key used in your auth.go
         return int(data.get('user_id'))
+    except Exception as e:
+        print(f"Token decode error: {e}")
+        return None
+
+def get_current_username(request):
+    """Extract username from JWT token"""
+    token = request.session.get("auth_token")
+    if not token:
+        return None
+    try:
+        parts = token.split('.')
+        if len(parts) < 2:
+            return None
+        
+        payload = parts[1]
+        payload += '=' * (-len(payload) % 4)
+        
+        decoded_bytes = base64.urlsafe_b64decode(payload)
+        data = json.loads(decoded_bytes)
+        
+        # Assuming your JWT includes 'username'
+        return data.get('username', f"User {data.get('user_id', '?')}")
     except Exception as e:
         print(f"Token decode error: {e}")
         return None
@@ -284,7 +303,7 @@ def simplify_group(request, group_id):
         # 1. Fetch ALL group debts from backend
         res = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/simplify", headers=headers)
         if res.status_code == 200:
-            all_txns = res.json()
+            all_txns = res.json() or []
             
             # 2. FILTER: Only keep debts involving the current user
             # structure: {'from': 1, 'to': 2, ...}
@@ -295,7 +314,7 @@ def simplify_group(request, group_id):
                 ]
             else:
                 txns = all_txns # Fallback if token decode fails
-    except:
+    except Exception as e:
         print(f"Error fetching debts: {e}")
         txns = []
 
@@ -306,13 +325,13 @@ def simplify_group(request, group_id):
 
 
 def settle_debt(request, group_id):
+
     token = request.session.get("auth_token")
-    if not token:
-        return redirect('login')
+    if not token: return redirect('login')
 
     if request.method == "POST":
         payee_id = request.POST.get('payee_id')
-        payee_name = request.POST.get('payee_name') # Optional, for description
+        payee_name = request.POST.get('payee_name')
         amount = request.POST.get('amount')
 
         headers = {"Authorization": f"Bearer {token}"}
@@ -320,10 +339,11 @@ def settle_debt(request, group_id):
         payload = {
             "group_id": int(group_id),
             "amount": float(amount),
-            "description": f"Settlement: Paid to {payee_name}", 
+            "description": f"Payment to {payee_name}", 
             "splits": [
                 {
-                    "user_id": int(payee_id), # Assign 100% of the cost to the receiver
+                    "user_id": int(payee_id),
+                    "payee_name":(payee_name),
                     "amount": float(amount)
                 }
             ]
@@ -337,7 +357,7 @@ def settle_debt(request, group_id):
             )
 
             if response.status_code in [200, 201]:
-                messages.success(request, "Payment recorded! Debt settled.")
+                messages.success(request,"Paid ₹{amount} to {payee_name}")
             else:
                 messages.error(request, f"Error: {response.text}")
 
@@ -346,24 +366,92 @@ def settle_debt(request, group_id):
 
     return redirect('simplify', group_id=group_id)
 
-# New View for History
+
 def group_expenses(request, group_id):
     token = request.session.get("auth_token")
     if not token:
         return redirect('login')
     
     headers = {"Authorization": f"Bearer {token}"}
-    expenses = []
-
+    
+    user_map = {}
     try:
+        res_names = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/simplify", headers=headers)
+        if res_names.status_code == 200:
+            for tx in (res_names.json() or []):
+                user_map[tx['from']] = tx['from_username']
+                user_map[tx['to']] = tx['to_username']
+    except:
+        pass 
 
-        res = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/expenses", headers=headers)
-        if res.status_code == 200:
-            expenses = res.json()
+    activity = []
+    try:
+        res_act = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/activity", headers=headers)
+        if res_act.status_code == 200:
+            activity = res_act.json() or []
     except:
         pass
 
+    payload = []
+    for item in activity:
+        payer_id = item.get('payer_id')
+        payee_id = item.get('payee_id') 
+
+        payer_name = user_map.get(payer_id, f"User {payer_id}")
+        payee_name = user_map.get(payee_id, f"User {payee_id}")
+
+        description = item.get('description', '')
+        if 'Payment to' in description:
+            payee_name = description[11:]
+
+        payload.append({
+            "amount": item.get('amount'),
+            "description": description,
+            "created_at": item.get('created_at'),
+            "payer_name": payer_name,
+            "payee_name": payee_name,
+            "is_settlement": (payee_id != 0 or 'Payment to' in description)
+        })
+
     return render(request, "web_ui/group_expenses.html", {
-        "expenses": expenses,
+        "expenses": payload,
         "group_id": group_id
+    })
+
+# ===== CHAT PAGE =====
+def chat_page(request, group_id):
+    token = request.session.get("auth_token")
+    if not token:
+        return redirect('login')
+    
+    user_id = get_current_user_id(request)
+    username = get_current_username(request)
+    
+    if not user_id:
+        messages.error(request, "Invalid session. Please login again.")
+        return redirect('login')
+
+    history = []
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        res = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/websockets", headers=headers)
+        if res.status_code == 200:
+            history = res.json()
+            print(f"✓ Fetched {len(history)} messages")
+        elif res.status_code == 403:
+            messages.error(request, "You are not a member of this group.")
+            return redirect('home')
+        else:
+            print(f"⚠ Error fetching history: {res.status_code} - {res.text}")
+    except requests.exceptions.ConnectionError:
+        print("⚠ Cannot connect to backend for chat history")
+    except Exception as e:
+        print(f"⚠ Error fetching chat history: {e}")
+
+    return render(request, "web_ui/chat.html", {
+        "group_id": group_id,
+        "user_id": user_id,
+        "username": username or f"User {user_id}",
+        "chat_history": json.dumps(history)
     })
