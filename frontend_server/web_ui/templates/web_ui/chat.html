@@ -1,0 +1,321 @@
+{% extends "web_ui/base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto h-[calc(100vh-140px)] flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:bg-[#0B1120] dark:border-gray-800">
+    
+    <!-- Header -->
+    <div class="px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-100 flex justify-between items-center z-10 dark:bg-gray-900/80 dark:border-gray-800">
+        <div class="flex items-center gap-4">
+            <a href="{% url 'home' %}" class="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition dark:hover:bg-gray-800 dark:text-gray-400">
+                <i class="fa-solid fa-arrow-left text-lg"></i>
+            </a>
+            <div>
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    Group Chat
+                    <span id="connection-badge" class="px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[10px] uppercase tracking-wide font-bold border border-gray-300 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-600">
+                        Connecting...
+                    </span>
+                </h2>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span id="status-indicator" class="relative flex h-2 w-2">
+                      <span class="absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-0" id="ping-animation"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-gray-400" id="status-dot"></span>
+                    </span>
+                    <p id="status-text" class="text-xs text-gray-500 font-medium dark:text-gray-400">Connecting...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Container -->
+    <div id="chat-container" class="flex-1 bg-gray-50/50 overflow-y-auto p-6 space-y-6 scroll-smooth dark:bg-[#0f172a]">
+        <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center transition-opacity duration-500"> 
+            <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-4 dark:bg-gray-800/50 shadow-inner">
+                <i class="fa-regular fa-comments text-3xl text-indigo-300 dark:text-gray-600"></i>
+            </div>
+            <h3 class="text-gray-900 font-bold text-lg dark:text-white">Group Chat</h3>
+            <p class="text-gray-500 text-sm mt-1 max-w-xs mx-auto dark:text-gray-400">Start typing to begin the conversation!</p>
+        </div>
+    </div>
+
+    <!-- Input Form -->
+    <div class="p-4 bg-white border-t border-gray-100 dark:bg-gray-900 dark:border-gray-800">
+        <form id="chat-form" class="relative flex gap-3 items-end max-w-4xl mx-auto">
+            <div class="flex-1 relative">
+                <input type="text" id="message-input" 
+                    class="w-full bg-gray-100 text-gray-900 rounded-2xl px-6 py-4 pr-12 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-gray-400 shadow-inner outline-none dark:bg-gray-800 dark:text-white dark:focus:bg-gray-700 dark:focus:ring-indigo-500/50"
+                    placeholder="Type a message..." autocomplete="off" disabled>
+            </div>
+            
+            <button type="submit" id="send-button"
+                class="bg-gray-400 text-white rounded-2xl w-14 h-[58px] flex items-center justify-center transition shadow-lg cursor-not-allowed" disabled>
+                <i class="fa-solid fa-paper-plane text-lg translate-x-0.5 translate-y-0.5"></i>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // ===== Configuration =====
+    const GROUP_ID = "{{ group_id }}";
+    const CURRENT_USER_ID = "{{ user_id }}";
+    const CURRENT_USER_NAME = "{{ username }}";
+    
+    console.log("Chat Config:", { GROUP_ID, CURRENT_USER_ID, CURRENT_USER_NAME });
+    
+    // ===== DOM Elements =====
+    const chatContainer = document.getElementById('chat-container');
+    const emptyState = document.getElementById('empty-state');
+    const chatForm = document.getElementById('chat-form');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const connectionBadge = document.getElementById('connection-badge');
+    const statusDot = document.getElementById('status-dot');
+    const pingAnimation = document.getElementById('ping-animation');
+    const statusText = document.getElementById('status-text');
+
+    const rawHistory = {{ chat_history|default:"[]"|safe }};
+    console.log(`📜 Loading ${rawHistory.length} messages from history`);
+    
+    if (rawHistory && rawHistory.length > 0) {
+        if (emptyState) emptyState.style.display = 'none';
+        
+        rawHistory.forEach(msg => {
+            appendMessage({
+                userID: String(msg.userID),
+                message: msg.message,
+                username: msg.username || `User ${msg.userID}`,
+                type: 'chat'
+            }, false);
+        });
+        scrollToBottom();
+    }
+
+    // ===== WebSocket Setup =====
+    const WS_URL = `ws://localhost:8080/ws/chat/${GROUP_ID}`;
+    let socket = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+
+    function connect() {
+        console.log(`[ws] Connecting to ${WS_URL}...`);
+        updateStatus('connecting');
+        
+        socket = new WebSocket(WS_URL);
+
+        socket.onopen = () => {
+            console.log(`[ws] ✓ Connected to group ${GROUP_ID}`);
+            reconnectAttempts = 0;
+            updateStatus('connected');
+            enableInput();
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                const msgType = data.type || data.Type;
+
+                if (msgType === 'chat') {
+                    console.log("[ws] 📨 Message received:", data);
+                    appendMessage(data, true); // true = animate
+                    scrollToBottom();
+                } else if (msgType === 'error') {
+                    console.error("[ws] ❌ Backend error:", data.message || data.Message);
+                    alert("Error: " + (data.message || data.Message));
+                } else if (msgType === 'status') {
+                    console.log("[ws] ℹ Status update:", data);
+                    // Handle typing indicators or other status updates
+                }
+            } catch (e) {
+                console.error("[ws] Error parsing message:", e, event.data);
+            }
+        };
+
+        socket.onerror = (error) => {
+            console.error('[ws] ❌ Connection error:', error);
+            updateStatus('error');
+        };
+
+        socket.onclose = (event) => {
+            console.log('[ws] 🔌 Disconnected:', event.code, event.reason);
+            updateStatus('disconnected');
+            disableInput();
+            
+            // Attempt to reconnect
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                console.log(`[ws] 🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                setTimeout(connect, delay);
+            } else {
+                console.error('[ws] ❌ Max reconnection attempts reached');
+                alert('Lost connection to chat. Please refresh the page.');
+            }
+        };
+    }
+
+    // Initial connection
+    connect();
+
+    // ===== Send Message =====
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = messageInput.value.trim();
+        if (!text) return;
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const payload = {
+                type: "chat",
+                message: text,
+                userID: CURRENT_USER_ID,
+                username: CURRENT_USER_NAME
+            };
+
+            console.log("[ws] 📤 Sending:", payload);
+            socket.send(JSON.stringify(payload));
+            messageInput.value = '';
+            messageInput.focus();
+        } else {
+            alert("Connection is not open. Reconnecting...");
+            connect();
+        }
+    });
+
+    // ===== UI Helper Functions =====
+    function updateStatus(status) {
+        const configs = {
+            connecting: {
+                badge: { text: 'Connecting...', classes: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
+                dot: 'bg-yellow-500',
+                ping: false,
+                text: 'Connecting...'
+            },
+            connected: {
+                badge: { text: 'Live', classes: 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400' },
+                dot: 'bg-emerald-500',
+                ping: true,
+                text: 'Online & Ready'
+            },
+            disconnected: {
+                badge: { text: 'Offline', classes: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400' },
+                dot: 'bg-red-500',
+                ping: false,
+                text: 'Disconnected'
+            },
+            error: {
+                badge: { text: 'Error', classes: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400' },
+                dot: 'bg-red-500',
+                ping: false,
+                text: 'Connection Error'
+            }
+        };
+
+        const config = configs[status];
+        if (!config) return;
+
+        // Update badge
+        connectionBadge.textContent = config.badge.text;
+        connectionBadge.className = `px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide font-bold border ${config.badge.classes}`;
+
+        // Update status dot
+        statusDot.className = `relative inline-flex rounded-full h-2 w-2 ${config.dot}`;
+        
+        // Update ping animation
+        if (config.ping) {
+            pingAnimation.className = `animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75`;
+        } else {
+            pingAnimation.className = `absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-0`;
+        }
+
+        // Update status text
+        statusText.textContent = config.text;
+    }
+
+    function enableInput() {
+        messageInput.disabled = false;
+        messageInput.placeholder = "Type a message...";
+        sendButton.disabled = false;
+        sendButton.className = "bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl w-14 h-[58px] flex items-center justify-center transition shadow-lg shadow-indigo-500/30 hover:-translate-y-1 active:scale-95 active:shadow-sm dark:bg-indigo-600 dark:hover:bg-indigo-500 cursor-pointer";
+    }
+
+    function disableInput() {
+        messageInput.disabled = true;
+        messageInput.placeholder = "Reconnecting...";
+        sendButton.disabled = true;
+        sendButton.className = "bg-gray-400 text-white rounded-2xl w-14 h-[58px] flex items-center justify-center transition shadow-lg cursor-not-allowed";
+    }
+
+    function appendMessage(data, animate = true) {
+        // Hide empty state
+        if (emptyState && emptyState.style.display !== 'none') {
+            emptyState.style.display = 'none';
+        }
+
+        // Normalize IDs to strings for comparison
+        const msgUserID = String(data.userID || data.UserID);
+        const isMe = msgUserID === String(CURRENT_USER_ID);
+
+        let displayName = isMe ? CURRENT_USER_NAME : (data.username || `User ${msgUserID}`);
+
+        const wrapper = document.createElement('div');
+        wrapper.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-4 ${animate ? 'animate-fade-in-up' : ''}`;
+        
+        const bubbleClass = isMe 
+            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md' 
+            : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700';
+
+        const senderLabel = !isMe 
+            ? `<p class="text-[10px] font-bold text-gray-400 mb-1 ml-1 uppercase tracking-wider">${displayName}</p>` 
+            : '';
+
+        const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
+        const avatarHTML = !isMe 
+            ? `<div class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 mr-3 mt-1 flex-shrink-0 dark:bg-gray-700 dark:text-gray-300">${initial}</div>`
+            : '';
+
+        const msgContent = escapeHtml(data.message || data.Message || "");
+
+        wrapper.innerHTML = `
+            ${avatarHTML}
+            <div class="max-w-[75%] md:max-w-[60%]">
+                ${senderLabel}
+                <div class="${bubbleClass} px-5 py-3.5 relative">
+                    <p class="text-sm leading-relaxed whitespace-pre-wrap font-medium">${msgContent}</p>
+                </div>
+            </div>
+        `;
+
+        chatContainer.appendChild(wrapper);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function scrollToBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // ===== Animations =====
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes fadeInUp { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+        .animate-fade-in-up { 
+            animation: fadeInUp 0.3s ease-out forwards; 
+        }
+    `;
+    document.head.appendChild(style);
+
+    // ===== Cleanup on page unload =====
+    window.addEventListener('beforeunload', () => {
+        if (socket) {
+            socket.close();
+        }
+    });
+</script>
+{% endblock %}
