@@ -1,37 +1,131 @@
 {% extends "web_ui/base.html" %}
 
 {% block content %}
-<div class="max-w-lg mx-auto">
+<div class="max-w-xl mx-auto">
     <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100 relative overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-indigo-50 rounded-full opacity-50 z-0 dark:bg-indigo-900/30"></div>
         
         <div class="relative z-10">
             <h2 class="text-2xl font-bold text-gray-900 mb-6 dark:text-white">Add New Expense</h2>
 
-            <form method="post" class="space-y-6">
+            <form method="post" class="space-y-6" id="expenseForm">
                 {% csrf_token %}
                 
-                <div>
-                     <label class="block text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">Amount</label>
-                    <div class="relative rounded-xl shadow-sm">
-                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                            <span class="text-gray-500 font-bold text-lg dark:text-gray-400">₹</span>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">Amount</label>
+                        <div class="relative rounded-xl shadow-sm">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                                <span class="text-gray-500 font-bold text-lg dark:text-gray-400">₹</span>
+                            </div>
+                            <input name="amount" id="totalAmount" type="number" step="0.01" required 
+                                class="block w-full rounded-xl border-gray-300 pl-8 py-3 text-lg font-bold text-gray-900 focus:border-indigo-500 focus:ring-indigo-500 outline-none transition bg-gray-50 focus:bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:bg-gray-800" 
+                                placeholder="0.00">
                         </div>
-                        <input name="amount" type="number" step="0.01" required 
-                            class="block w-full rounded-xl border-gray-300 pl-8 py-3 text-2xl font-bold text-gray-900 focus:border-indigo-500 focus:ring-indigo-500 outline-none transition bg-gray-50 focus:bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:bg-gray-800" 
-                            placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">Description</label>
+                        <input name="description" required placeholder="e.g. Dinner" 
+                            class="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:bg-gray-800">
                     </div>
                 </div>
-                
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">Description</label>
-                    <input name="description" required placeholder="e.g. Dinner at Mario's" 
-                        class="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:bg-gray-800">
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Split Method</label>
+                    <div class="grid grid-cols-3 gap-2 p-1 bg-gray-100 rounded-xl dark:bg-gray-700">
+                        
+                        <label class="cursor-pointer">
+                            <input type="radio" name="split_mode" value="equal_all" class="peer hidden" checked onchange="toggleSplit('all')">
+                            <div class="py-2 text-center rounded-lg text-xs font-bold text-gray-500 peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition dark:peer-checked:bg-gray-600 dark:peer-checked:text-white">
+                                Everyone
+                            </div>
+                        </label>
+
+                        <label class="cursor-pointer">
+                            <input type="radio" name="split_mode" value="equal_subset" class="peer hidden" onchange="toggleSplit('subset')">
+                            <div class="py-2 text-center rounded-lg text-xs font-bold text-gray-500 peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition dark:peer-checked:bg-gray-600 dark:peer-checked:text-white">
+                                Select
+                            </div>
+                        </label>
+
+                        <label class="cursor-pointer">
+                            <input type="radio" name="split_mode" value="custom" class="peer hidden" onchange="toggleSplit('custom')">
+                            <div class="py-2 text-center rounded-lg text-xs font-bold text-gray-500 peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition dark:peer-checked:bg-gray-600 dark:peer-checked:text-white">
+                                Custom
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="section-all" class="p-4 bg-indigo-50 rounded-xl text-indigo-700 text-sm dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800">
+                    <div class="flex items-center gap-3">
+                        <div class="h-8 w-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 dark:bg-indigo-800 dark:text-indigo-200">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold">Split Equally</p>
+                            <p class="opacity-80 text-xs">Between all {{ members|length }} group members.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="section-subset" class="hidden space-y-3">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Select members involved:</p>
+                    <div class="max-h-48 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                        {% for member in members %}
+                        <label class="flex items-center gap-3 p-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition dark:border-gray-600 dark:hover:bg-gray-700">
+                            <input type="checkbox" name="selected_members" value="{{ member.id }}" 
+                                   class="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ member.username }}</span>
+                        </label>
+                        {% empty %}
+                        <div class="text-center py-4">
+                            <p class="text-sm text-gray-400 italic">No members found.</p>
+                            <p class="text-xs text-gray-400 mt-1">Invite people using the Join Code.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div id="section-custom" class="hidden space-y-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Select & Enter Amount:</p>
+                        <p class="text-xs font-bold transition-colors duration-200" id="total-status">
+                            Total: ₹<span id="custom-total">0.00</span>
+                        </p>
+                    </div>
+                    
+                    <div class="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                        {% for member in members %}
+                        <div class="flex items-center gap-3 p-2 border border-gray-100 rounded-xl hover:bg-gray-50 transition dark:border-gray-700 dark:hover:bg-gray-800">
+                            <input type="checkbox" id="check_{{ member.id }}" 
+                                   class="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 custom-checkbox"
+                                   onchange="toggleCustomInput('{{ member.id }}')">
+                            
+                            <label for="check_{{ member.id }}" class="flex-1 text-sm font-medium text-gray-700 cursor-pointer dark:text-gray-200 truncate">
+                                {{ member.username }}
+                            </label>
+
+                            <div class="relative w-28">
+                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                                <input type="number" step="0.01" 
+                                       name="custom_amount_{{ member.id }}" 
+                                       id="input_{{ member.id }}"
+                                       class="custom-input w-full pl-6 pr-3 py-2 text-sm bg-gray-100 border-transparent rounded-lg focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-700 dark:text-white"
+                                       placeholder="0.00" disabled>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-center py-4">
+                            <p class="text-sm text-gray-400 italic">No members found.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <p id="error-msg" class="text-xs text-red-500 font-bold text-right hidden">Total does not match amount!</p>
                 </div>
 
                 <div class="border-t border-gray-200 pt-6 flex flex-col gap-3 dark:border-gray-700">
-                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-indigo-700 transition shadow-md flex justify-center items-center dark:hover:bg-indigo-500">
-                        <i class="fa-solid fa-receipt mr-2"></i> Add Expense
+                    <button type="submit" id="submitBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-indigo-700 transition shadow-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-check mr-2"></i> Save Expense
                     </button>
                     <a href="{% url 'home' %}" class="w-full py-3 px-4 rounded-xl border border-gray-300 text-gray-600 font-semibold text-center hover:bg-gray-50 transition dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
                         Cancel
@@ -41,4 +135,104 @@
         </div>
     </div>
 </div>
+
+<script>
+    // 1. Toggle between Tabs
+    function toggleSplit(mode) {
+        document.getElementById('section-all').classList.add('hidden');
+        document.getElementById('section-subset').classList.add('hidden');
+        document.getElementById('section-custom').classList.add('hidden');
+
+        if (mode === 'all') document.getElementById('section-all').classList.remove('hidden');
+        else if (mode === 'subset') document.getElementById('section-subset').classList.remove('hidden');
+        else if (mode === 'custom') document.getElementById('section-custom').classList.remove('hidden');
+        
+        validateForm(); // Re-validate when switching modes
+    }
+
+    // 2. Enable/Disable Input based on Checkbox
+    function toggleCustomInput(id) {
+        const checkbox = document.getElementById(`check_${id}`);
+        const input = document.getElementById(`input_${id}`);
+        
+        if (checkbox.checked) {
+            input.disabled = false;
+            input.focus();
+        } else {
+            input.disabled = true;
+            input.value = ''; // Clear value when unchecked
+        }
+        updateCustomTotal();
+    }
+
+    // Elements
+    const inputs = document.querySelectorAll('.custom-input');
+    const totalDisplay = document.getElementById('custom-total');
+    const statusText = document.getElementById('total-status');
+    const mainTotalInput = document.getElementById('totalAmount');
+    const errorMsg = document.getElementById('error-msg');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // 3. Calculate sum of enabled custom inputs
+    function updateCustomTotal() {
+        let sum = 0;
+        inputs.forEach(inp => {
+            if (!inp.disabled) {
+                sum += parseFloat(inp.value || 0);
+            }
+        });
+        
+        totalDisplay.textContent = sum.toFixed(2);
+        validateForm(sum);
+    }
+
+    // 4. Validate Logic
+    function validateForm(customSum = null) {
+        const splitMode = document.querySelector('input[name="split_mode"]:checked').value;
+        const mainTotal = parseFloat(mainTotalInput.value || 0);
+        
+        if (splitMode === 'custom' && mainTotal > 0) {
+            // ... existing sum calculation ...
+            if (customSum === null) {
+                customSum = 0;
+                inputs.forEach(inp => { if(!inp.disabled) customSum += parseFloat(inp.value || 0); });
+            }
+
+            const diff = Math.abs(customSum - mainTotal);
+            
+            // Threshold 0.01
+            if (diff > 0.01) { 
+                statusText.className = "text-xs font-bold text-red-500 transition-colors";
+                if(errorMsg) errorMsg.classList.remove('hidden');
+                if(submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } else {
+                statusText.className = "text-xs font-bold text-emerald-600 transition-colors";
+                if(errorMsg) errorMsg.classList.add('hidden');
+                if(submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        } else { 
+            // PREVIOUS ERROR WAS HERE: You had an extra '}' above this line
+            
+            // For 'Everyone' and 'Select' modes, we trust the user/logic
+            if (statusText) statusText.className = "text-xs font-bold transition-colors";
+            if (errorMsg) errorMsg.classList.add('hidden');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    }
+
+    // 5. Event Listeners
+    inputs.forEach(inp => inp.addEventListener('input', () => updateCustomTotal()));
+    
+    // Validate when main amount changes too
+    mainTotalInput.addEventListener('input', () => validateForm());
+</script>
 {% endblock %}
