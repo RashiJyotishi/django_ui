@@ -1,9 +1,10 @@
 {% extends "web_ui/base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <div class="max-w-5xl mx-auto h-[calc(100vh-140px)] flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:bg-[#0B1120] dark:border-gray-800">
     
-    <!-- Header -->
     <div class="px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-100 flex justify-between items-center z-10 dark:bg-gray-900/80 dark:border-gray-800">
         <div class="flex items-center gap-4">
             <a href="{% url 'home' %}" class="h-10 w-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition dark:hover:bg-gray-800 dark:text-gray-400">
@@ -27,20 +28,35 @@
         </div>
     </div>
 
-    <!-- Chat Container -->
     <div id="chat-container" class="flex-1 bg-gray-50/50 overflow-y-auto p-6 space-y-6 scroll-smooth dark:bg-[#0f172a]">
         <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center transition-opacity duration-500"> 
             <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-4 dark:bg-gray-800/50 shadow-inner">
                 <i class="fa-regular fa-comments text-3xl text-indigo-300 dark:text-gray-600"></i>
             </div>
             <h3 class="text-gray-900 font-bold text-lg dark:text-white">Group Chat</h3>
-            <p class="text-gray-500 text-sm mt-1 max-w-xs mx-auto dark:text-gray-400">Start typing to begin the conversation!</p>
+            <p class="text-gray-500 text-sm mt-1 max-w-xs mx-auto dark:text-gray-400">Start typing or upload a file!</p>
         </div>
     </div>
 
-    <!-- Input Form -->
+    <div id="upload-progress-container" class="hidden px-6 py-2 bg-gray-50 border-t border-gray-100 dark:bg-gray-900 dark:border-gray-800">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-cloud-arrow-up text-indigo-500 animate-bounce"></i>
+            <span class="text-xs font-medium text-gray-500">Uploading...</span>
+            <div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div id="upload-progress-bar" class="h-full bg-indigo-500 w-0 transition-all duration-300"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="p-4 bg-white border-t border-gray-100 dark:bg-gray-900 dark:border-gray-800">
         <form id="chat-form" class="relative flex gap-3 items-end max-w-4xl mx-auto">
+            
+            <input type="file" id="file-input" class="hidden">
+            
+            <button type="button" id="file-trigger" class="bg-gray-100 text-gray-500 rounded-2xl w-14 h-[58px] flex items-center justify-center transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700">
+                <i class="fa-solid fa-paperclip text-lg"></i>
+            </button>
+
             <div class="flex-1 relative">
                 <input type="text" id="message-input" 
                     class="w-full bg-gray-100 text-gray-900 rounded-2xl px-6 py-4 pr-12 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all placeholder-gray-400 shadow-inner outline-none dark:bg-gray-800 dark:text-white dark:focus:bg-gray-700 dark:focus:ring-indigo-500/50"
@@ -56,6 +72,10 @@
 </div>
 
 <script>
+    // ===== CLOUDINARY CONFIG =====
+    const CLOUD_NAME = "{{ cloud_name }}";
+    const UPLOAD_PRESET = "{{ upload_preset }}";
+
     // ===== Configuration =====
     const GROUP_ID = "{{ group_id }}";
     const CURRENT_USER_ID = "{{ user_id }}";
@@ -69,24 +89,25 @@
     const chatForm = document.getElementById('chat-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
-    const connectionBadge = document.getElementById('connection-badge');
-    const statusDot = document.getElementById('status-dot');
-    const pingAnimation = document.getElementById('ping-animation');
-    const statusText = document.getElementById('status-text');
-
+    const fileInput = document.getElementById('file-input');
+    const fileTrigger = document.getElementById('file-trigger');
+    const uploadProgressContainer = document.getElementById('upload-progress-container');
+    const uploadProgressBar = document.getElementById('upload-progress-bar');
+    
+    // ===== Load History =====
     const rawHistory = {{ chat_history|default:"[]"|safe }};
-    console.log(`📜 Loading ${rawHistory.length} messages from history`);
     
     if (rawHistory && rawHistory.length > 0) {
         if (emptyState) emptyState.style.display = 'none';
-        
         rawHistory.forEach(msg => {
-            appendMessage({
-                userID: String(msg.userID),
+            const processedMsg = {
+                userID: String(msg.userID || msg.user_id),
                 message: msg.message,
                 username: msg.username || `User ${msg.userID}`,
-                type: 'chat'
-            }, false);
+                file_url: msg.file_url || msg.FileURL,
+                file_type: msg.file_type || msg.FileType
+            };
+            appendMessage(processedMsg, false);
         });
         scrollToBottom();
     }
@@ -117,14 +138,13 @@
 
                 if (msgType === 'chat') {
                     console.log("[ws] 📨 Message received:", data);
-                    appendMessage(data, true); // true = animate
+                    appendMessage(data, true);
                     scrollToBottom();
                 } else if (msgType === 'error') {
                     console.error("[ws] ❌ Backend error:", data.message || data.Message);
                     alert("Error: " + (data.message || data.Message));
                 } else if (msgType === 'status') {
                     console.log("[ws] ℹ Status update:", data);
-                    // Handle typing indicators or other status updates
                 }
             } catch (e) {
                 console.error("[ws] Error parsing message:", e, event.data);
@@ -141,11 +161,10 @@
             updateStatus('disconnected');
             disableInput();
             
-            // Attempt to reconnect
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
                 const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-                console.log(`[ws] 🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                console.log(`[ws] 🔄 Reconnecting in ${delay}ms...`);
                 setTimeout(connect, delay);
             } else {
                 console.error('[ws] ❌ Max reconnection attempts reached');
@@ -153,9 +172,65 @@
             }
         };
     }
-
+    
     // Initial connection
     connect();
+
+    // ===== File Upload Logic (CORRECTED) =====
+    fileTrigger.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        uploadProgressContainer.classList.remove('hidden');
+        uploadProgressBar.style.width = '0%';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', UPLOAD_PRESET);
+
+        // --- FIX IS HERE: Don't force 'raw' for PDFs ---
+        // We removed "file.type === 'application/pdf'" from the condition below.
+        let resourceType = 'auto';
+        if (file.type.includes('spreadsheet') || 
+            file.type.includes('document') || 
+            file.type.includes('zip')) {
+            resourceType = 'raw';
+        }
+        
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`;
+
+        try {
+            const response = await fetch(uploadUrl, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+            
+            const data = await response.json();
+            const fileUrl = data.secure_url;
+            
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const payload = {
+                    type: "chat",
+                    message: "Shared a file",
+                    userID: CURRENT_USER_ID,
+                    username: CURRENT_USER_NAME,
+                    file_url: fileUrl,
+                    file_type: file.type.startsWith('image/') ? 'image' : 'file'
+                };
+                socket.send(JSON.stringify(payload));
+            }
+        } catch (error) {
+            console.error("Upload error:", error);
+            alert("Failed to upload file.");
+        } finally {
+            uploadProgressContainer.classList.add('hidden');
+            fileInput.value = ''; 
+        }
+    });
 
     // ===== Send Message =====
     chatForm.addEventListener('submit', (e) => {
@@ -170,8 +245,6 @@
                 userID: CURRENT_USER_ID,
                 username: CURRENT_USER_NAME
             };
-
-            console.log("[ws] 📤 Sending:", payload);
             socket.send(JSON.stringify(payload));
             messageInput.value = '';
             messageInput.focus();
@@ -181,8 +254,98 @@
         }
     });
 
+    function appendMessage(data, animate = true) {
+        if (emptyState) emptyState.style.display = 'none';
+
+        const msgUserID = String(data.userID || data.UserID);
+        const isMe = msgUserID === String(CURRENT_USER_ID);
+        
+        // --- FIX USERNAME DISPLAY ---
+        // If it's me, use "You". If data has username, use it. Else fallback to "User ID"
+        let displayName = "User";
+        if (isMe) {
+            displayName = "You";
+        } else if (data.username && data.username.trim() !== "") {
+            displayName = data.username;
+        } else if (data.Username) { // Check capitalized case just in case
+            displayName = data.Username;
+        } else {
+            displayName = `User ${msgUserID}`;
+        }
+
+        const initial = displayName.charAt(0).toUpperCase();
+
+        const wrapper = document.createElement('div');
+        wrapper.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-4 ${animate ? 'animate-fade-in-up' : ''}`;
+        
+        const bubbleClass = isMe 
+            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md' 
+            : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700';
+
+        // ... (File handling logic remains the same) ...
+        const fileUrl = data.file_url || data.FileURL;
+        const fileType = data.file_type || data.FileType;
+        let contentHtml = '';
+        
+        if (fileUrl) {
+             // ... (Keep your existing File/PDF logic here) ...
+             if (fileType === 'image' || (fileUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null)) {
+                contentHtml = `<a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-xs rounded-lg mb-2 border border-black/10" alt="Shared Image"></a>`;
+            } else {
+                const downloadUrl = fileUrl.includes('upload/') ? fileUrl.replace('upload/', 'upload/fl_attachment/') : fileUrl;
+                const viewerUrl = fileUrl; // Direct link for auto-preview
+                contentHtml = `
+                    <div class="flex flex-col gap-2 min-w-[200px]">
+                        <div class="flex items-center gap-3 p-3 bg-black/5 rounded-lg dark:bg-white/10">
+                            <div class="h-10 w-10 bg-white rounded-full flex items-center justify-center text-indigo-500 shadow-sm">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </div>
+                            <div class="text-sm">
+                                <p class="font-bold opacity-90">Shared Document</p>
+                                <p class="text-xs opacity-70">PDF / File</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 text-xs font-bold">
+                            <a href="${viewerUrl}" target="_blank" class="flex-1 py-2 text-center bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition cursor-pointer">View</a>
+                            <a href="${downloadUrl}" target="_blank" class="flex-1 py-2 text-center bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition cursor-pointer">Save</a>
+                        </div>
+                    </div>`;
+            }
+        } else {
+            contentHtml = `<p class="text-sm leading-relaxed whitespace-pre-wrap font-medium">${escapeHtml(data.message || data.Message || "")}</p>`;
+        }
+
+        const time = data.created_at || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Avatar only for others
+        const avatarHTML = !isMe 
+            ? `<div class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 mr-3 mt-1 flex-shrink-0 dark:bg-gray-700 dark:text-gray-300" title="${displayName}">${initial}</div>`
+            : '';
+
+        wrapper.innerHTML = `
+            ${avatarHTML}
+            <div class="max-w-[75%] md:max-w-[60%]">
+                <div class="flex items-baseline justify-between gap-2 mb-1 pl-1">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${displayName}</span>
+                    <span class="text-[10px] text-gray-400 opacity-60 ml-auto">${time}</span>
+                </div>
+                <div class="${bubbleClass} px-5 py-3.5 relative overflow-hidden">
+                    ${contentHtml}
+                </div>
+            </div>
+        `;
+        chatContainer.appendChild(wrapper);
+    }
+
     // ===== UI Helper Functions =====
     function updateStatus(status) {
+        const connectionBadge = document.getElementById('connection-badge');
+        const statusDot = document.getElementById('status-dot');
+        const pingAnimation = document.getElementById('ping-animation');
+        const statusText = document.getElementById('status-text');
+
+        if (!connectionBadge) return; 
+
         const configs = {
             connecting: {
                 badge: { text: 'Connecting...', classes: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
@@ -213,21 +376,12 @@
         const config = configs[status];
         if (!config) return;
 
-        // Update badge
         connectionBadge.textContent = config.badge.text;
         connectionBadge.className = `px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide font-bold border ${config.badge.classes}`;
-
-        // Update status dot
         statusDot.className = `relative inline-flex rounded-full h-2 w-2 ${config.dot}`;
-        
-        // Update ping animation
-        if (config.ping) {
-            pingAnimation.className = `animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75`;
-        } else {
-            pingAnimation.className = `absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-0`;
-        }
-
-        // Update status text
+        pingAnimation.className = config.ping 
+            ? `animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75`
+            : `absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-0`;
         statusText.textContent = config.text;
     }
 
@@ -245,49 +399,6 @@
         sendButton.className = "bg-gray-400 text-white rounded-2xl w-14 h-[58px] flex items-center justify-center transition shadow-lg cursor-not-allowed";
     }
 
-    function appendMessage(data, animate = true) {
-        // Hide empty state
-        if (emptyState && emptyState.style.display !== 'none') {
-            emptyState.style.display = 'none';
-        }
-
-        // Normalize IDs to strings for comparison
-        const msgUserID = String(data.userID || data.UserID);
-        const isMe = msgUserID === String(CURRENT_USER_ID);
-
-        let displayName = isMe ? CURRENT_USER_NAME : (data.username || `User ${msgUserID}`);
-
-        const wrapper = document.createElement('div');
-        wrapper.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-4 ${animate ? 'animate-fade-in-up' : ''}`;
-        
-        const bubbleClass = isMe 
-            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md' 
-            : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700';
-
-        const senderLabel = !isMe 
-            ? `<p class="text-[10px] font-bold text-gray-400 mb-1 ml-1 uppercase tracking-wider">${displayName}</p>` 
-            : '';
-
-        const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
-        const avatarHTML = !isMe 
-            ? `<div class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 mr-3 mt-1 flex-shrink-0 dark:bg-gray-700 dark:text-gray-300">${initial}</div>`
-            : '';
-
-        const msgContent = escapeHtml(data.message || data.Message || "");
-
-        wrapper.innerHTML = `
-            ${avatarHTML}
-            <div class="max-w-[75%] md:max-w-[60%]">
-                ${senderLabel}
-                <div class="${bubbleClass} px-5 py-3.5 relative">
-                    <p class="text-sm leading-relaxed whitespace-pre-wrap font-medium">${msgContent}</p>
-                </div>
-            </div>
-        `;
-
-        chatContainer.appendChild(wrapper);
-    }
-
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -300,22 +411,12 @@
 
     // ===== Animations =====
     const style = document.createElement('style');
-    style.innerHTML = `
-        @keyframes fadeInUp { 
-            from { opacity: 0; transform: translateY(10px); } 
-            to { opacity: 1; transform: translateY(0); } 
-        }
-        .animate-fade-in-up { 
-            animation: fadeInUp 0.3s ease-out forwards; 
-        }
-    `;
+    style.innerHTML = `@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }`;
     document.head.appendChild(style);
 
-    // ===== Cleanup on page unload =====
+    // ===== Cleanup =====
     window.addEventListener('beforeunload', () => {
-        if (socket) {
-            socket.close();
-        }
+        if (socket) socket.close();
     });
 </script>
 {% endblock %}
