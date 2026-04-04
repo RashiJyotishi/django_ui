@@ -479,20 +479,26 @@ def group_expenses(request, group_id):
 def chat_page(request, group_id):
     token = request.session.get("auth_token")
     if not token: return redirect('login')
-    
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_history = []
     user_id = get_current_user_id(request)
     username = get_current_username(request)
-
-    # Note: History loading removed because the Backend route 
-    # "/api/groups/{group_id}/websockets" does not exist in routes.go.
-    # Chat history should be handled by the Client via WebSocket on connection.
-    history = []
+    try:
+        response = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/activity", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            # Extract the chat specific part from the combined JSON
+            chat_history = data.get('chat_history', [])
+            # print(f"Fetched chat history: {chat_history}")
+    except:
+        pass
 
     return render(request, "web_ui/chat.html", {
         "group_id": group_id,
         "user_id": user_id,
         "username": username,
-        "chat_history": json.dumps(history),
+        "chat_history": json.dumps(chat_history),
         "cloud_name": os.getenv("CLOUDINARY_CLOUD_NAME"),
         "upload_preset": os.getenv("CLOUDINARY_UPLOAD_PRESET")
     })
