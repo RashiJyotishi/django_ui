@@ -445,7 +445,8 @@ def group_expenses(request, group_id):
     try:
         res_act = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/activity", headers=headers)
         if res_act.status_code == 200:
-            activity = res_act.json() or []
+            data = res_act.json()
+            activity = data.get('activity_feed', [])
     except:
         pass
 
