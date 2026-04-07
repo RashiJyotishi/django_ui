@@ -1,3 +1,4 @@
+import token
 import requests
 import re
 import json
@@ -477,24 +478,33 @@ def group_expenses(request, group_id):
 
 
 def chat_page(request, group_id):
+    # print("page called")
     token = request.session.get("auth_token")
     if not token: return redirect('login')
     headers = {"Authorization": f"Bearer {token}"}
-
+    # print(f"Fetching chat history for group {group_id} with token: {token}")
     chat_history = []
     user_id = get_current_user_id(request)
     username = get_current_username(request)
     try:
         response = requests.get(f"{GO_BACKEND_URL}/api/groups/{group_id}/activity", headers=headers)
+        # print(f"Activity response status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()
+            # print("Raw activity data:", data);
             # Extract the chat specific part from the combined JSON
             chat_history = data.get('chat_history', [])
             # print(f"Fetched chat history: {chat_history}")
     except:
         pass
 
+    # print("DEBUG chat_history:", chat_history)
+    ws_url = os.getenv("WS_BACKEND_URL", "ws://localhost:8080")
+
     return render(request, "web_ui/chat.html", {
+        "go_backend_url": GO_BACKEND_URL,
+        "ws_backend_url": ws_url,
+        "token": token,
         "group_id": group_id,
         "user_id": user_id,
         "username": username,

@@ -28,7 +28,7 @@
         </div>
     </div>
 
-    <div id="chat-container" class="flex-1 bg-gray-50/50 overflow-y-auto p-6 space-y-6 scroll-smooth dark:bg-[#0f172a]">
+    <div id="chat-container" class="flex-1 bg-gray-50/50 overflow-y-auto p-6 space-y-6 dark:bg-[#0f172a]">
         <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center transition-opacity duration-500"> 
             <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-4 dark:bg-gray-800/50 shadow-inner">
                 <i class="fa-regular fa-comments text-3xl text-indigo-300 dark:text-gray-600"></i>
@@ -71,18 +71,23 @@
     </div>
 </div>
 
+
 <script>
     // ===== CLOUDINARY CONFIG =====
     const CLOUD_NAME = "{{ cloud_name }}";
     const UPLOAD_PRESET = "{{ upload_preset }}";
+
+    const GO_BACKEND_URL = "{{ go_backend_url }}";
+    // console.log("go url", GO_BACKEND_URL);
 
     // ===== Configuration =====
     const GROUP_ID = "{{ group_id }}";
     const CURRENT_USER_ID = "{{ user_id }}";
     const CURRENT_USER_NAME = "{{ username }}";
     
-    console.log("Chat Config:", { GROUP_ID, CURRENT_USER_ID, CURRENT_USER_NAME });
-    
+    // console.log("Chat Config:", { GROUP_ID, CURRENT_USER_ID, CURRENT_USER_NAME });
+    //console.log( "{{chat_history}}");
+
     // ===== DOM Elements =====
     const chatContainer = document.getElementById('chat-container');
     const emptyState = document.getElementById('empty-state');
@@ -94,26 +99,66 @@
     const uploadProgressContainer = document.getElementById('upload-progress-container');
     const uploadProgressBar = document.getElementById('upload-progress-bar');
     
-    // ===== Load History =====
-    const rawHistory = {{ chat_history|default:"[]"|safe }};
-    
-    if (rawHistory && rawHistory.length > 0) {
-        if (emptyState) emptyState.style.display = 'none';
-        rawHistory.forEach(msg => {
-            const processedMsg = {
-                userID: String(msg.userID || msg.user_id),
-                message: msg.message,
-                username: msg.username || `User ${msg.userID}`,
-                file_url: msg.file_url || msg.FileURL,
-                file_type: msg.file_type || msg.FileType
-            };
-            appendMessage(processedMsg, false);
-        });
-        scrollToBottom();
+
+    let oldestMessageId = null;
+    let isLoadingHistory = false;
+    let hasMoreHistory = true; // Set this to false if the backend returns 0 messages
+    let isInitialLoadDone = false;
+
+    function updateOldestId(messages) {
+        if (messages && messages.length > 0) {
+            // Find the minimum ID in the new batch of messages
+            // console.log("messages are =>", messages);
+            const ids = messages.map(m => (m.messageID));
+            // console.log("Extracted IDs from batch:", ids);
+            const minIdInBatch = Math.min(...ids);
+            // console.log(`Oldest message ID in batch: ${minIdInBatch}`);
+            // Update our global tracker if this batch has even older messages
+            if (oldestMessageId === null || minIdInBatch < oldestMessageId) {
+                oldestMessageId = minIdInBatch;
+            }
+        }
     }
 
+    // ===== Load History =====
+  //   const rawHistory = {{ chat_history|default:"[]"|safe }};
+  //   const rw = JSON.parse('{{ chat_history|escapejs }}');
+  //   // console.log("Raw history from backend:", rw);
+//
+  //   if (rawHistory && rawHistory.length > 0) {
+  //       console.log("Loading chat history:", rawHistory);
+  //       if (emptyState) emptyState.style.display = 'none';
+  //       console.log("this is what i want to know");
+  //       console.log("IDs:", rawHistory.map(m => m.message_id));
+  //       rawHistory.forEach(msg => {
+  //           const processedMsg = {
+  //               id: msg.message_id,
+  //               userID: String(msg.userID || msg.user_id),
+  //               message: msg.message,
+  //               username: msg.username || `User ${msg.userID}`,
+  //               file_url: msg.file_url || msg.FileURL,
+  //               file_type: msg.file_type || msg.FileType
+  //           };
+  //           // console.log("Processing historical message:", processedMsg);
+  //           appendMessage(processedMsg, false);
+  //       });
+  //       //scrollToBottom();
+  //       chatContainer.scrollTop = chatContainer.scrollHeight;
+  //       // 2. Wait a tiny bit for the browser to finish painting, then unlock the listener
+  //       setTimeout(() => {
+  //           chatContainer.scrollTop = chatContainer.scrollHeight;
+  //           isInitialLoadDone = true;
+  //           updateOldestId(rawHistory);
+  //       }, 100);
+  //       console.log("Finished loading history. Setting oldestMessageId...");
+  //       updateOldestId(rawHistory);
+  //       console.log("Initial oldestMessageId set to:", oldestMessageId);
+  //       // updateOldestId(rawHistory);
+  //   }
+
     // ===== WebSocket Setup =====
-    const WS_URL = `ws://localhost:8080/ws/chat/${GROUP_ID}`;
+    const ws_backend_url = "{{ ws_backend_url }}";
+    const WS_URL = `${ws_backend_url}/chat/${GROUP_ID}`;
     let socket = null;
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 5;
@@ -126,6 +171,7 @@
 
         socket.onopen = () => {
             console.log(`[ws] ✓ Connected to group ${GROUP_ID}`);
+            chatContainer.innerHTML = '';
             reconnectAttempts = 0;
             updateStatus('connected');
             enableInput();
@@ -135,16 +181,35 @@
             try {
                 const data = JSON.parse(event.data);
                 const msgType = data.type || data.Type;
+                // console.log("the data is ", data);
+                // console.log("[ws] Received message:");
 
-                if (msgType === 'chat') {
-                    console.log("[ws] 📨 Message received:", data);
-                    appendMessage(data, true);
-                    scrollToBottom();
-                } else if (msgType === 'error') {
-                    console.error("[ws] ❌ Backend error:", data.message || data.Message);
+                // if (msgType === 'chat') {
+                //     // console.log("[ws] 📨 Message received:", data);
+                //     appendMessage(data, true);
+                //     scrollToBottom();
+                // }
+                if (msgType === 'history') {
+                    // console.log("Initial history received:", data.messages);
+
+                    if (data.messages.length > 0) {
+                        emptyState.style.display = 'none';
+
+                        data.messages.forEach(msg => {
+                            appendMessage(msg, false);
+                            // console.log("msg ",msg);
+                        });
+                        // console.log("send to update oldest id");
+                        updateOldestId(data.messages);
+                        setTimeout(() => {
+                            scrollToBottom();
+                        }, 0);
+                    }
+                }else if (msgType === 'error') {
+                    // console.error("[ws] ❌ Backend error:", data.message || data.Message);
                     alert("Error: " + (data.message || data.Message));
                 } else if (msgType === 'status') {
-                    console.log("[ws] ℹ Status update:", data);
+                    // console.log("[ws] ℹ Status update:", data);
                 }
             } catch (e) {
                 console.error("[ws] Error parsing message:", e, event.data);
@@ -254,6 +319,16 @@
         }
     });
 
+    // ===== Scroll Listener for Pagination =====
+    chatContainer.addEventListener("scroll", () => {
+        // console.log("Scroll event detected. scrollTop:", chatContainer.scrollTop, "scrollHeight:", chatContainer.scrollHeight, "clientHeight:", chatContainer.clientHeight);
+        // console.log("isLoadingHistory:", isLoadingHistory, "oldestMessageId:", oldestMessageId);
+        if (chatContainer.scrollTop <= 10 && !isLoadingHistory && oldestMessageId !== null) {
+            //console.log("Top reached! Loading more history...");
+            loadMoreHistory();
+        }
+    });
+
     function appendMessage(data, animate = true) {
         if (emptyState) emptyState.style.display = 'none';
 
@@ -337,6 +412,89 @@
         chatContainer.appendChild(wrapper);
     }
 
+    function prependMessage(data, animate = true) {
+        if (emptyState) emptyState.style.display = 'none';
+
+        const msgUserID = String(data.userID || data.UserID);
+        const isMe = msgUserID === String(CURRENT_USER_ID);
+        //console.log("Prepending message:");
+
+        // --- FIX USERNAME DISPLAY ---
+        let displayName = "User";
+        if (isMe) {
+            displayName = "You";
+        } else if (data.username && data.username.trim() !== "") {
+            displayName = data.username;
+        } else if (data.Username) { // Check capitalized case just in case
+            displayName = data.Username;
+        } else {
+            displayName = `User ${msgUserID}`;
+        }
+
+        const initial = displayName.charAt(0).toUpperCase();
+
+        const wrapper = document.createElement('div');
+        wrapper.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-4 ${animate ? 'animate-fade-in-up' : ''}`;
+
+        const bubbleClass = isMe
+            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md'
+            : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700';
+
+        // ... (File handling logic remains the same) ...
+        const fileUrl = data.file_url || data.FileURL;
+        const fileType = data.file_type || data.FileType;
+        let contentHtml = '';
+
+        if (fileUrl) {
+             // ... (Keep your existing File/PDF logic here) ...
+             if (fileType === 'image' || (fileUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null)) {
+                contentHtml = `<a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="max-w-xs rounded-lg mb-2 border border-black/10" alt="Shared Image"></a>`;
+            } else {
+                const downloadUrl = fileUrl.includes('upload/') ? fileUrl.replace('upload/', 'upload/fl_attachment/') : fileUrl;
+                const viewerUrl = fileUrl; // Direct link for auto-preview
+                contentHtml = `
+                    <div class="flex flex-col gap-2 min-w-[200px]">
+                        <div class="flex items-center gap-3 p-3 bg-black/5 rounded-lg dark:bg-white/10">
+                            <div class="h-10 w-10 bg-white rounded-full flex items-center justify-center text-indigo-500 shadow-sm">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </div>
+                            <div class="text-sm">
+                                <p class="font-bold opacity-90">Shared Document</p>
+                                <p class="text-xs opacity-70">PDF / File</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 text-xs font-bold">
+                            <a href="${viewerUrl}" target="_blank" class="flex-1 py-2 text-center bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition cursor-pointer">View</a>
+                            <a href="${downloadUrl}" target="_blank" class="flex-1 py-2 text-center bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition cursor-pointer">Save</a>
+                        </div>
+                    </div>`;
+            }
+        } else {
+            contentHtml = `<p class="text-sm leading-relaxed whitespace-pre-wrap font-medium">${escapeHtml(data.message || data.Message || "")}</p>`;
+        }
+
+        const time = data.created_at || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Avatar only for others
+        const avatarHTML = !isMe
+            ? `<div class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 mr-3 mt-1 flex-shrink-0 dark:bg-gray-700 dark:text-gray-300" title="${displayName}">${initial}</div>`
+            : '';
+
+        wrapper.innerHTML = `
+            ${avatarHTML}
+            <div class="max-w-[75%] md:max-w-[60%]">
+                <div class="flex items-baseline justify-between gap-2 mb-1 pl-1">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${displayName}</span>
+                    <span class="text-[10px] text-gray-400 opacity-60 ml-auto">${time}</span>
+                </div>
+                <div class="${bubbleClass} px-5 py-3.5 relative overflow-hidden">
+                    ${contentHtml}
+                </div>
+            </div>
+        `;
+        chatContainer.prepend(wrapper);
+    }
+
     // ===== UI Helper Functions =====
     function updateStatus(status) {
         const connectionBadge = document.getElementById('connection-badge');
@@ -407,6 +565,41 @@
     
     function scrollToBottom() {
         chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    async function loadMoreHistory() {
+        if (isLoadingHistory || !hasMoreHistory) return;
+
+        isLoadingHistory = true;
+        // console.log(`Loading more history before message ID: ${oldestMessageId}...`);
+        // 1. Record the total height BEFORE we add new messages
+        const oldHeight = chatContainer.scrollHeight;
+
+        try {
+            const token ="{{ token }}";
+            //console.log("TOKEN => ", token);
+            const response = await fetch(`${GO_BACKEND_URL}/api/groups/${GROUP_ID}/chat-pagination?before_id=${oldestMessageId}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+            // console.log("Pagination response:", data);
+
+            if (data.messages && data.messages.length > 0) {
+                // 2. Add the messages to the top (we'll look at the prepend function next)
+                data.messages.reverse().forEach(msg => prependMessage(msg));
+
+                // 3. Update our "bookmark" for the next scroll
+                updateOldestId(data.messages);
+                hasMoreHistory = data.has_more;
+
+                // 4. Anchor the scroll using our math!
+                const newHeight = chatContainer.scrollHeight;
+                chatContainer.scrollTop = newHeight - oldHeight;
+            }
+        } finally {
+            isLoadingHistory = false;
+        }
     }
 
     // ===== Animations =====
