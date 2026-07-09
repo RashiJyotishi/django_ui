@@ -158,7 +158,11 @@
 
     // ===== WebSocket Setup =====
     const ws_backend_url = "{{ ws_backend_url }}";
-    const WS_URL = `${ws_backend_url}/chat/${GROUP_ID}`;
+    if (window.location.protocol === 'https:' && ws_backend_url.startsWith('ws://')) {
+        ws_backend_url = ws_backend_url.replace('ws://', 'wss://');
+    }
+    
+   const WS_URL = `${ws_backend_url}/ws/chat/${GROUP_ID}`;
     let socket = null;
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 5;
@@ -184,11 +188,11 @@
                 // console.log("the data is ", data);
                 // console.log("[ws] Received message:");
 
-                // if (msgType === 'chat') {
-                //     // console.log("[ws] 📨 Message received:", data);
-                //     appendMessage(data, true);
-                //     scrollToBottom();
-                // }
+                 if (msgType === 'chat') {
+                    //console.log("[ws] 📨 Message received:", data);
+                     appendMessage(data, true);
+                     scrollToBottom();
+                 }
                 if (msgType === 'history') {
                     // console.log("Initial history received:", data.messages);
 
